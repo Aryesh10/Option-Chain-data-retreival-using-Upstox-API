@@ -1,51 +1,183 @@
 
-
 # Upstox API Interaction Script
 
-This Python script interacts with the Upstox API to perform several key functions, including user authentication, retrieving option chain data, and processing this data to analyze specific options based on criteria such as side (call or put) and price. The script is designed to support options trading data analysis with minimal setup.
+This Python script facilitates interaction with the Upstox API by enabling user authentication, retrieving options chain data, and processing this data for options trading analysis. Below is a breakdown of the functions, including explanations of their operations, assumptions, and sample API responses with the expected outputs.
 
 ## Prerequisites
 
-To use this script, ensure that you:
-- Have registered as a developer on Upstox and obtained API credentials: `client_id` and `client_secret`.
-- Set up a **redirect URI** to receive the authorization response.
+To use this script, you need:
+- Upstox API credentials (`client_id`, `client_secret`, and `redirect_uri`).
+- Basic familiarity with Upstox’s [API documentation](https://upstox.com/developer/api/).
 
 ### Dependencies
-The script uses the following libraries:
-- `requests`: Handles HTTP requests to the Upstox API.
-- `pandas`: Processes and analyzes option chain data.
-- `webbrowser`: Opens the authorization URL in the default web browser.
-- `time`: Manages delays, if necessary, to synchronize with API responses.
+- `requests` - Handles HTTP requests.
+- `pandas` - Structures and analyzes data.
+- `webbrowser` - Opens the authorization URL in a browser.
+- `time` - Manages timing for API response synchronization.
 
-## Code Structure and Logic
+## Code Structure and Functionality
 
-1. **Authorization URL Generation**:
-   - `get_authorization_code()`: Constructs the authorization URL and opens it in the browser, allowing the user to log in and authorize access. Afterward, the authorization code can be retrieved from the redirect URL and input manually.
+### 1. `get_authorization_code()`
 
-2. **Access Token Retrieval**:
-   - `get_access_token(authorization_code)`: Exchanges the authorization code for an access token by making a POST request to Upstox’s token endpoint. This token is essential for accessing Upstox’s protected API endpoints.
+**Function**: Constructs the OAuth2 authorization URL, opens it in the browser, and prompts the user to enter the authorization code provided in the redirect URL.
 
-3. **Option Chain Data Retrieval**:
-   - `fetch_option_chain_data(access_token, instrument_key, expiry_date)`: Retrieves options data for a specified instrument and expiry date. This function makes a GET request to Upstox’s option chain API, using the access token for authorization. 
+- **Assumptions**: Assumes that the `client_id` and `redirect_uri` are correctly set and that the user completes authorization in a timely manner.
+  
+- **How It Works**: 
+  - Builds the authorization URL using the `client_id` and `redirect_uri`.
+  - Opens this URL in the default web browser.
+  - After user authorization, the code expects the user to input the `authorization_code` manually.
 
-4. **Data Processing and Analysis**:
-   - `process_option_chain_data(data, side)`: Analyzes the option chain data by filtering it based on the `side` parameter (either "CE" for call options or "PE" for put options). It extracts key details like strike prices and last traded prices (LTP) and returns this information in a structured format using `pandas` DataFrames.
+**Example URL Opened**:
+```
+https://api.upstox.com/v2/login/authorization/dialog?client_id=73654a6c-48d4-418c-a328-6d0d5f8c1cc7&redirect_uri=https://webhook.site/fa266724-120b-457a-8d68-5c5990e318fa
+```
 
-### Example Workflow
+**Example Input Prompt**:
+```
+Enter the authorization code from the URL:
+```
 
-1. **Authentication**:
-   - Run `get_authorization_code()` to open the Upstox login page in the browser.
-   - After authorization, enter the authorization code when prompted.
+### 2. `get_access_token(authorization_code)`
 
+**Function**: Exchanges the `authorization_code` for an `access_token` to access other Upstox API endpoints.
+
+- **Assumptions**: Assumes that the authorization code is valid and the Upstox token endpoint is accessible.
+
+- **How It Works**:
+  - Constructs a POST request with parameters including `client_id`, `client_secret`, `grant_type`, `redirect_uri`, and the provided `authorization_code`.
+  - Sends the request to Upstox’s token endpoint to obtain the `access_token`.
+
+**Example Request**:
+```python
+data = {
+    "client_id": client_id,
+    "client_secret": client_secret,
+    "grant_type": "authorization_code",
+    "redirect_uri": redirect_uri,
+    "code": authorization_code
+}
+```
+
+**Example API Response**:
+```json
+{
+  "access_token": "eyJ0eXAiOiJKV1Qi...",
+  "token_type": "Bearer",
+  "expires_in": 3600
+}
+```
+
+**Output**: Returns the `access_token` required for authenticated requests.
+
+### 3. `fetch_option_chain_data(access_token, instrument_key, expiry_date)`
+
+**Function**: Retrieves the option chain data for a specified `instrument_key` (such as `NSE_INDEX|NIFTY50`) and `expiry_date`.
+
+- **Assumptions**: Assumes the `access_token` is valid, the instrument key exists, and the expiry date format matches `YYYY-MM-DD`.
+
+- **How It Works**:
+  - Constructs the request URL with `instrument_key` and `expiry_date`.
+  - Passes the `access_token` in the headers to authorize the request.
+  - Retrieves the JSON response containing data for various strike prices and market information for both call and put options.
+
+**Example Request**:
+```python
+url = f"https://api.upstox.com/v2/option/chain?instrument_key={instrument_key}&expiry_date={expiry_date}"
+headers = {
+    "Authorization": f"Bearer {access_token}",
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+}
+```
+
+**Example API Response**:
+```json
+{
+  "data": [
+    {
+      "strike_price": 17000,
+      "call_options": {
+        "market_data": {
+          "ltp": 180.50
+        }
+      },
+      "put_options": {
+        "market_data": {
+          "ltp": 190.75
+        }
+      }
+    },
+    {
+      "strike_price": 17500,
+      "call_options": {
+        "market_data": {
+          "ltp": 140.10
+        }
+      },
+      "put_options": {
+        "market_data": {
+          "ltp": 200.25
+        }
+      }
+    }
+  ]
+}
+```
+
+**Output**: Returns raw option chain data in JSON format.
+
+### 4. `process_option_chain_data(data, side)`
+
+**Function**: Processes the option chain data, filtering by `side` (either "CE" for call options or "PE" for put options) and extracting the last traded price (LTP) and strike price.
+
+- **Assumptions**: Assumes `data` is correctly formatted JSON from the Upstox API, and the `side` parameter is valid.
+
+- **How It Works**:
+  - Iterates over each record in the `data` array, selecting `call_options` or `put_options` based on the `side` parameter.
+  - Extracts `strike_price` and `ltp` (last traded price) and stores them in a list of dictionaries.
+  - Converts the list into a `pandas` DataFrame for further analysis, such as identifying the highest price.
+
+**Example Processing**:
+```python
+# For `side="CE"` (Call Options)
+[
+    {
+        "strike_price": 17000,
+        "side": "CE",
+        "ltp": 180.50
+    },
+    {
+        "strike_price": 17500,
+        "side": "CE",
+        "ltp": 140.10
+    }
+]
+```
+
+**Example DataFrame Output**:
+| strike_price | side | ltp   |
+|--------------|------|-------|
+| 17000        | CE   | 180.5 |
+| 17500        | CE   | 140.1 |
+
+### Workflow
+
+1. **Authentication**: 
+   - Run `get_authorization_code()` and `get_access_token(authorization_code)`.
+   
 2. **Data Retrieval**:
-   - Pass the access token obtained to `fetch_option_chain_data()`, specifying the instrument and expiry date for the options chain.
+   - Use `fetch_option_chain_data(access_token, instrument_key, expiry_date)` to retrieve option chain data.
 
 3. **Data Processing**:
-   - Use `process_option_chain_data()` to filter and organize the options data, ready for further analysis or strategy implementation.
+   - Process this data using `process_option_chain_data(data, side)` for insights into call or put options by side and strike price.
 
 ## Security Considerations
 
-- **Credentials and Tokens**: Secure your API credentials (`client_id`, `client_secret`) and the access token. Avoid storing sensitive data directly in the code or sharing it in public repositories.
-- **Data Privacy**: Limit access to the data retrieved from Upstox’s API, especially if it contains sensitive market information.
+Secure your credentials and token to prevent unauthorized access. Ensure that sensitive data, such as API keys, is not hardcoded in public code.
 
 ## AI Tools Used
+
+- Used ChatGPT for refining the code and detecting errors.
+- Used ChatGPT to understand the working of Upstox API.
+- 
